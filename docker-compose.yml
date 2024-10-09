@@ -1,0 +1,57 @@
+version: '3'
+
+services:
+  db:
+    image: postgres:13
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:6-alpine
+    ports:
+      - "6379:6379"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+    environment:
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - DATABASE_URL=${DATABASE_URL}
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE}
+    env_file:
+      - .env
+
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile.celery
+    command: celery -A backend worker --loglevel=info
+    depends_on:
+      - redis
+      - db
+    volumes:
+      - ./backend:/app
+    environment:
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - DATABASE_URL=${DATABASE_URL}
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE}
+    env_file:
+      - .env
+
+volumes:
+  postgres_data:
