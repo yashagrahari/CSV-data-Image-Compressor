@@ -16,9 +16,10 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-from .views import UploadCSV, StatusAPI
+from .views import UploadCSV, StatusAPI, OutputWebhook
 
 urlpatterns = [
     path('upload/', UploadCSV.as_view(), name='upload_csv'),
     path('status/<str:request_id>/', StatusAPI.as_view(), name='check_status'),
+    path('output-webhook/', OutputWebhook.as_view(), name='webhook-endpoint'),
 ]

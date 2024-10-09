@@ -5,6 +5,9 @@ from .models import ProductImage, ImageProcessingRequest
 from .constants import STATUS_IN_PROGRESS, STATUS_FAILED
 from backend.tasks import process_images_async
 import csv
+import datetime
+import os
+from django.conf import settings
 from io import StringIO
 from urllib.parse import urlparse
 
@@ -16,7 +19,7 @@ class UploadCSV(APIView):
             return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
 
         image_processing_request = ImageProcessingRequest.objects.create()
-        print(image_processing_request.request_id)
+        
         # Parse and validate CSV
         try:
             csv_file = StringIO(file.read().decode())
@@ -25,17 +28,7 @@ class UploadCSV(APIView):
                 rows = [row for row in csv_reader]
                 self.validate_csv(rows)
             except ValueError as e:
-                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-            
-            # # Store product images in the database
-            # for row in rows:
-            #     ProductImage.objects.create(
-            #         serial_number=row['S. No.'],
-            #         product_name=row['Product Name'],
-            #         input_image_urls=row['Input Image Urls'],
-            #         request=image_processing_request,
-            #         status=STATUS_IN_PROGRESS
-            #     )
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)  
 
             # Trigger async image processing
             process_images_async.delay(rows, image_processing_request.request_id)
@@ -60,6 +53,7 @@ class UploadCSV(APIView):
                 parsed = urlparse(url.strip())
                 if not parsed.scheme or not parsed.netloc:
                     raise ValueError(f"Invalid URL: {url}")
+                
 
 class StatusAPI(APIView):
     def get(self, request, request_id):
@@ -83,3 +77,21 @@ class StatusAPI(APIView):
         
         except ImageProcessingRequest.DoesNotExist:
             return Response({"error": "Request ID not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+class OutputWebhook(APIView):
+    def post(self, request):
+        output_rows = request.data['output_rows']
+        output_file_name = 'output_file' + str(datetime.datetime.now) + '.csv'
+        output_csv_dir = os.path.join(settings.BASE_DIR, 'media', 'output_files')
+        if not os.path.exists(output_csv_dir):
+            os.makedirs(output_csv_dir)
+        output_csv_path = os.path.join(output_csv_dir, output_file_name)
+
+        with open(output_csv_path, 'w', newline='') as csvfile:
+            fieldnames = ['S. No.', 'Product Name', 'Input Image Urls', 'Output Image Urls']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            for output_row in output_rows:
+                writer.writerow(output_row)
+        return Response({"status": "success"}, status=200)
